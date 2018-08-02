@@ -5,7 +5,7 @@ import argparse
 import sys
 
 import torch
-from torch.autograd import Variable
+
 import torch.nn as nn
 from torch import optim
 
@@ -50,7 +50,7 @@ class SPINN(nn.Module):
         self.out = nn.Linear(size, n_classes)
 
     def leaf(self, word_id):
-        return self.embeddings(word_id), Variable(torch.FloatTensor(word_id.size()[0], self.size))
+        return self.embeddings(word_id), torch.Tensor(word_id.size()[0], self.size, dtype=torch.float32)
 
     def children(self, left_h, left_c, right_h, right_c):
         return self.tree_lstm((left_h, left_c), (right_h, right_c))
@@ -62,7 +62,7 @@ class SPINN(nn.Module):
 def encode_tree_regular(model, tree):
     def encode_node(node):
         if node.is_leaf():
-            return model.leaf(Variable(torch.LongTensor([node.id])))
+            return model.leaf(torch.Tensor([node.id],dtype=torch.long))
         else:
             left_h, left_c = encode_node(node.left)
             right_h, right_c = encode_node(node.right)
@@ -118,26 +118,31 @@ def main():
     inputs = datasets.snli.ParsedTextField(lower=True)
     transitions = datasets.snli.ShiftReduceField()
     answers = data.Field(sequential=False)
-
+    print("Initializing dataset..")
     train, dev, test = datasets.SNLI.splits(inputs, answers, transitions)
     inputs.build_vocab(train, dev, test)
     answers.build_vocab(train)
     train_iter, dev_iter, test_iter = data.BucketIterator.splits(
         (train, dev, test), batch_size=args.batch_size, device=0 if args.cuda else -1)
-
-    model = SPINN(3, 500, 1000)
+    print("Done.")
+    model = SPINN(3, 50, 100)
     criterion = nn.CrossEntropyLoss()
     opt = optim.Adam(model.parameters(), lr=0.01)
+    device = torch.device('cuda' if args.cuda else 'cpu')
 
     for epoch in range(10):
+        print("starting epoch {}".format(epoch))
         start = time.time()
         iteration = 0
+
         for batch_idx, batch in enumerate(train_iter):
             opt.zero_grad()
 
             all_logits, all_labels = [], []
-            fold = torchfold.Fold(cuda=args.cuda)
+            fold = torchfold.Fold(device=device)
+            # TODO: incorrect logic here, the for loop goes through the entire dataset, not the batch:
             for example in batch.dataset:
+                print("example:"+str(example))
                 tree = Tree(example, inputs.vocab, answers.vocab)
                 if args.fold:
                     all_logits.append(encode_tree_fold(fold, tree))
@@ -148,15 +153,21 @@ def main():
             if args.fold:
                 res = fold.apply(model, [all_logits, all_labels])
                 loss = criterion(res[0], res[1])
+
             else:
-                loss = criterion(torch.cat(all_logits, 0), Variable(torch.LongTensor(all_labels)))
+                loss = criterion(torch.cat(all_logits, 0), torch.Tensor(all_labels,dtype=torch.long))
+            print("loss={}".format(loss.item()))
             loss.backward(); opt.step()
 
             iteration += 1
-            if iteration % 10 == 0:
+            if iteration % 1 == 1:
                 print("Avg. Time: %fs" % ((time.time() - start) / iteration))
+                print("iteration {} loss:{}".format(iteration, loss))
                 # iteration = 0
-                # start = time.time()
+                start = time.time()
+
+
+        print("done epoch {}".format(epoch))
 
 
 if __name__ == "__main__":

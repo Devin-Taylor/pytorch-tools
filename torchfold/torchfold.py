@@ -1,7 +1,6 @@
 import collections
 
 import torch
-from torch.autograd import Variable
 
 
 class Fold(object):
@@ -75,25 +74,25 @@ class Fold(object):
                     self.result[split_idx] = torch.chunk(self.result[split_idx], self.batch_size)
                 return self.result[split_idx][index]
 
-    def __init__(self, volatile=False, cuda=False):
+    def __init__(self, volatile=False, device=torch.device('cpu')):
         self.steps = collections.defaultdict(
             lambda: collections.defaultdict(list))
         self.cached_nodes = collections.defaultdict(dict)
         self.total_nodes = 0
         self.volatile = volatile
-        self._cuda = cuda
+        self._device = device
 
     def cuda(self):
-        self._cuda = True
+        self._device = torch.device('cuda')
         return self
 
     def add(self, op, *args):
         """Add op to the fold."""
         self.total_nodes += 1
         if not all([isinstance(arg, (
-                Fold.Node, int, torch.tensor._TensorBase, Variable)) for arg in args]):
+                Fold.Node, int, torch.Tensor)) for arg in args]):
             raise ValueError(
-                "All args should be Tensor, Variable, int or Node, got: %s" % str(args))
+                "All args should be Tensor, int or Node, got: %s" % str(args))
         if args not in self.cached_nodes[op]:
             step = max([0] + [arg.step + 1 for arg in args
                               if isinstance(arg, Fold.Node)])
@@ -124,19 +123,16 @@ class Fold(object):
                             raise ValueError("Can not use more then one of nobatch argument, got: %s." % str(arg_item))
                     res.append(arg[0].get(values))
             elif all(isinstance(arg_item, int) for arg_item in arg):
-                if self._cuda:
-                    var = Variable(
-                        torch.cuda.LongTensor(arg), volatile=self.volatile)
-                else:
-                    var = Variable(
-                        torch.LongTensor(arg), volatile=self.volatile)
+
+                var = torch.Tensor(arg,dtype=torch.long).to(self._device)
+                #var = Variable(torch.LongTensor(arg), volatile=self.volatile).to(self._device)
                 res.append(var)
             else:
                 for arg_item in arg:
                     if isinstance(arg_item, Fold.Node):
                         assert arg_item.batch
                         r.append(arg_item.get(values))
-                    elif isinstance(arg_item, (torch.tensor._TensorBase, Variable)):
+                    elif isinstance(arg_item, torch.Tensor):
                         r.append(arg_item)
                     else:
                         raise ValueError(
@@ -181,7 +177,7 @@ class Fold(object):
                 first_el = ''
                 for arg in self.steps[step][op][0]:
                     if first_el: first_el += ', '
-                    if isinstance(arg, (torch.tensor._TensorBase, Variable)):
+                    if isinstance(arg, torch.Tensor):
                         first_el += str(arg.size())
                     else:
                         first_el += str(arg)
@@ -210,23 +206,22 @@ class Unfold(object):
         def split(self, num):
             return [Unfold.Node(self.tensor[i]) for i in range(num)]
 
-    def __init__(self, nn, volatile=False, cuda=False):
+    def __init__(self, nn, volatile=False, device=torch.device('cpu')):
         self.nn = nn
         self.volatile = volatile
-        self._cuda = cuda
+        self._device = device
 
     def cuda(self):
-        self._cuda = True
+        self._device = torch.device('cuda')
         return self
 
     def _arg(self, arg):
         if isinstance(arg, Unfold.Node):
             return arg.tensor
         elif isinstance(arg, int):
-            if self._cuda:
-                return Variable(torch.cuda.LongTensor([arg]), volatile=self.volatile)
-            else:
-                return Variable(torch.LongTensor([arg]), volatile=self.volatile)
+
+            return torch.Tensor([arg], volatile=self.volatile, dtype=torch.long).to(self._device)
+            #return Variable(torch.LongTensor([arg]), volatile=self.volatile).to(self._device)
         else:
             return arg
 
