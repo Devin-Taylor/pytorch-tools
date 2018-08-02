@@ -89,19 +89,19 @@ class TestRNNBatching(unittest.TestCase):
         seq_lengths = [2, 3, 5]
 
         states = []
-        for _ in xrange(len(seq_lengths)):
+        for _ in range(len(seq_lengths)):
             states.append(self._generate_variable(self.num_units))
 
         f = torchfold.Fold()
-        for seq_ind in xrange(len(seq_lengths)):
-            for _ in xrange(seq_lengths[seq_ind]):
+        for seq_ind in range(len(seq_lengths)):
+            for _ in range(seq_lengths[seq_ind]):
                 states[seq_ind] = f.add('encode', self._generate_variable(self.input_size), states[seq_ind])
 
         enc = RNNEncoder(self.num_units, self.input_size)
         with mock.patch.object(torch, 'chunk', wraps=torch.chunk) as wrapped_chunk:
             result = f.apply(enc, [states])
             # torch.chunk is called 3 times instead of max(seq_lengths)=5.
-            self.assertEquals(3, wrapped_chunk.call_count)
+            self.assertEqual(3, wrapped_chunk.call_count)
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0].size(), (len(seq_lengths), self.num_units))
 
