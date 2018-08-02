@@ -124,7 +124,7 @@ class Fold(object):
                     res.append(arg[0].get(values))
             elif all(isinstance(arg_item, int) for arg_item in arg):
 
-                var = torch.Tensor(arg,dtype=torch.long).to(self._device)
+                var = torch.Tensor(arg).type(dtype=torch.long).to(self._device)
                 #var = Variable(torch.LongTensor(arg), volatile=self.volatile).to(self._device)
                 res.append(var)
             else:
@@ -220,8 +220,8 @@ class Unfold(object):
             return arg.tensor
         elif isinstance(arg, int):
 
-            return torch.Tensor([arg], volatile=self.volatile, dtype=torch.long).to(self._device)
-            #return Variable(torch.LongTensor([arg]), volatile=self.volatile).to(self._device)
+            return torch.Tensor([arg], volatile=self.volatile).type(dtype=torch.long).to(self._device)
+
         else:
             return arg
 

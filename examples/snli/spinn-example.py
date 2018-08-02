@@ -11,6 +11,7 @@ from torch import optim
 
 from torchtext import data
 from torchtext import datasets
+from torchtext.data import Example
 
 import torchfold
 
@@ -50,7 +51,11 @@ class SPINN(nn.Module):
         self.out = nn.Linear(size, n_classes)
 
     def leaf(self, word_id):
-        return self.embeddings(word_id), torch.Tensor(word_id.size()[0], self.size, dtype=torch.float32)
+        embedded = self.embeddings(word_id)
+        return embedded, \
+               torch.zeros((word_id.size(0),
+                            self.size))\
+                   .type(dtype=torch.float32)
 
     def children(self, left_h, left_c, right_h, right_c):
         return self.tree_lstm((left_h, left_c), (right_h, right_c))
@@ -125,7 +130,7 @@ def main():
     train_iter, dev_iter, test_iter = data.BucketIterator.splits(
         (train, dev, test), batch_size=args.batch_size, device=0 if args.cuda else -1)
     print("Done.")
-    model = SPINN(3, 50, 100)
+    model = SPINN(3, 500, 10000)
     criterion = nn.CrossEntropyLoss()
     opt = optim.Adam(model.parameters(), lr=0.01)
     device = torch.device('cuda' if args.cuda else 'cpu')
@@ -140,15 +145,22 @@ def main():
 
             all_logits, all_labels = [], []
             fold = torchfold.Fold(device=device)
+            count=0
             # TODO: incorrect logic here, the for loop goes through the entire dataset, not the batch:
             for example in batch.dataset:
-                print("example:"+str(example))
+                #print("example:"+str(example))
                 tree = Tree(example, inputs.vocab, answers.vocab)
                 if args.fold:
                     all_logits.append(encode_tree_fold(fold, tree))
                 else:
                     all_logits.append(encode_tree_regular(model, tree))
                 all_labels.append(tree.label)
+                # We use the following BAD workaround to test the later part of folding and training:
+                count+=1
+                if count>args.batch_size:
+                    # we stop after seeing batchsize examples, but they are not from the batch, but from the
+                    # entire dataset, presumably never shuffled.
+                    break
 
             if args.fold:
                 res = fold.apply(model, [all_logits, all_labels])
@@ -160,7 +172,7 @@ def main():
             loss.backward(); opt.step()
 
             iteration += 1
-            if iteration % 1 == 1:
+            if iteration % 10 == 1:
                 print("Avg. Time: %fs" % ((time.time() - start) / iteration))
                 print("iteration {} loss:{}".format(iteration, loss))
                 # iteration = 0
