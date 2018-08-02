@@ -49,9 +49,14 @@ class SPINN(nn.Module):
         self.tree_lstm = TreeLSTM(size)
         self.embeddings = nn.Embedding(n_words, size)
         self.out = nn.Linear(size, n_classes)
+        self.n_words=n_words
 
     def leaf(self, word_id):
-        embedded = self.embeddings(word_id)
+
+        try:
+            embedded = self.embeddings(word_id)
+        except:
+            print("Word {} is larger than n_words {}.".format(word_id, self.n_words))
         return embedded, \
                torch.zeros((word_id.size(0),
                             self.size))\
@@ -130,7 +135,7 @@ def main():
     train_iter, dev_iter, test_iter = data.BucketIterator.splits(
         (train, dev, test), batch_size=args.batch_size, device=0 if args.cuda else -1)
     print("Done.")
-    model = SPINN(3, 500, 10000)
+    model = SPINN(3, 500, len(inputs.vocab))
     criterion = nn.CrossEntropyLoss()
     opt = optim.Adam(model.parameters(), lr=0.01)
     device = torch.device('cuda' if args.cuda else 'cpu')
