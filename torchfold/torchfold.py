@@ -1,7 +1,9 @@
 import collections
 
 import torch
+import logging
 
+logger = logging.getLogger(__name__)
 
 class Fold(object):
 
@@ -114,8 +116,9 @@ class Fold(object):
                     if batched_arg is not None:
                         res.append(batched_arg)
                     else:
+                        # logger.debug([arg_item.get(values).to(self._device) for arg_item in arg])
                         res.append(
-                            torch.cat([arg_item.get(values)
+                            torch.cat([arg_item.get(values).to(self._device)
                                        for arg_item in arg], 0))
                 else:
                     for arg_item in arg[1:]:
